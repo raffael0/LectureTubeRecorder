@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  lecturetube-recorder:
+    build: .
+    container_name: lecturetube-recorder
+    restart: always
+    volumes:
+        - type: bind
+          source: ./config.yml
+          target: /app/config.yml
+          read_only: true
+        - ./output:/app/video-downloads

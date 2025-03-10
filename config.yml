@@ -1,0 +1,7 @@
+lectures:
+  - lecture: "Introduction to AI"
+    rooms:
+      - room_id: "bau178a-gm-1-audi-max"
+        day: "monday"
+        time: "17:35"
+        duration: 10
