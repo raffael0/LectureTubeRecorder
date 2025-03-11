@@ -44,13 +44,13 @@ def record_stream(lecture, hoersal_id, duration):
     ]
 
     try:
-        print(f"Recording started for {hoersal_id} in {lecture}: {output_file}")
+        logging.info(f"Recording started for {hoersal_id} in {lecture}: {output_file}")
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode != 0:
             error_message = result.stderr.decode("utf-8")
             logging.error(f"Recording failed for {hoersal_id} in {lecture}: {error_message}")
         else:
-            print(f"Recording finished for {hoersal_id} in {lecture}")
+            logging.info(f"Recording finished for {hoersal_id} in {lecture}")
     except Exception as e:
         logging.error(f"Unexpected error during recording {hoersal_id} in {lecture}: {e}")
 
@@ -63,6 +63,8 @@ def update_schedule():
     new_schedule = load_schedule_config()
     new_schedule_keys = {}
 
+    changed = False
+
     for lecture_entry in new_schedule.get("lectures", []):
         lecture_name = lecture_entry["lecture"]
         for entry in lecture_entry.get("rooms", []):
@@ -73,9 +75,10 @@ def update_schedule():
                 time_str = entry["time"]
                 hoersal_id = entry["room_id"]
                 duration = entry.get("duration", 3600)
+                changed = True
 
                 if hasattr(schedule.every(), day):
-                    job = getattr(schedule.every(), day).at(time_str).do(record_stream, lecture_name, hoersal_id,
+                    job = getattr(schedule.every(), day).at(time_str, "Europe/Vienna").do(record_stream, lecture_name, hoersal_id,
                                                                          duration)
                     current_schedule[key] = job
                     logging.info(f"Added new recording schedule: {key}")
@@ -86,21 +89,20 @@ def update_schedule():
     # Remove outdated schedules
     for key in list(current_schedule.keys()):
         if key not in new_schedule_keys:
+            changed = True
             schedule.cancel_job(current_schedule[key])
             logging.info(f"Removed outdated recording schedule: {key}")
             del current_schedule[key]
 
     current_schedule = new_schedule_keys
-    logging.info("Schedule updated.")
+    if changed:
+        logging.info("Schedule updated.")
 
 # Initial schedule load
 update_schedule()
 
-def printJobs():
-    logging.info(schedule.get_jobs())
 # Reload the schedule every 10 seconds
 schedule.every(10).seconds.do(update_schedule)
-schedule.every(10).seconds.do(printJobs)
 
 logging.info("Scheduler running... Press Ctrl+C to stop.")
 while True:
