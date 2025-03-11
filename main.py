@@ -18,8 +18,9 @@ logging.basicConfig(
 CONFIG_PATH = os.getenv("CONFIG_PATH", "config.yml")
 STORAGE_DIR = os.getenv("STORAGE_DIR", "video-downloads")
 
+#
 # Initialize schedule_config globally
-schedule_config = {"lectures": []}
+current_schedule = {}
 
 def load_schedule_config(file_path=CONFIG_PATH):
     try:
@@ -28,7 +29,6 @@ def load_schedule_config(file_path=CONFIG_PATH):
     except Exception as e:
         logging.error(f"Failed to load schedule configuration: {e}")
         return {"lectures": []}
-
 
 def record_stream(lecture, hoersal_id, duration):
     url = f"https://live.video.tuwien.ac.at/lecturetube-live/{hoersal_id}/playlist.m3u8"
@@ -54,33 +54,53 @@ def record_stream(lecture, hoersal_id, duration):
     except Exception as e:
         logging.error(f"Unexpected error during recording {hoersal_id} in {lecture}: {e}")
 
+def get_schedule_key(entry):
+    return entry["day"].lower(), entry["time"], entry["room_id"], entry.get("duration", 3600)
+
 
 def update_schedule():
-    global schedule_config
-    schedule.clear()
-    schedule_config = load_schedule_config()
+    global current_schedule
+    new_schedule = load_schedule_config()
+    new_schedule_keys = {}
 
-    for lecture_entry in schedule_config.get("lectures", []):
+    for lecture_entry in new_schedule.get("lectures", []):
         lecture_name = lecture_entry["lecture"]
         for entry in lecture_entry.get("rooms", []):
-            day = entry["day"].lower()
-            time_str = entry["time"]
-            hoersal_id = entry["room_id"]
-            duration = entry.get("duration", 3600)  # Default to 1 hour if not specified
+            key = get_schedule_key(entry)
 
-            if hasattr(schedule.every(), day):
-                getattr(schedule.every(), day).at(time_str).do(record_stream, lecture_name, hoersal_id, duration)
-            else:
-                logging.error(f"Invalid day in schedule: {day}")
+            if key not in current_schedule:
+                day = entry["day"].lower()
+                time_str = entry["time"]
+                hoersal_id = entry["room_id"]
+                duration = entry.get("duration", 3600)
 
-    logging.info("Schedule reloaded.")
+                if hasattr(schedule.every(), day):
+                    job = getattr(schedule.every(), day).at(time_str).do(record_stream, lecture_name, hoersal_id,
+                                                                         duration)
+                    current_schedule[key] = job
+                    logging.info(f"Added new recording schedule: {key}")
+                else:
+                    logging.error(f"Invalid day in schedule: {day}")
+            new_schedule_keys[key] = current_schedule.get(key)
 
+    # Remove outdated schedules
+    for key in list(current_schedule.keys()):
+        if key not in new_schedule_keys:
+            schedule.cancel_job(current_schedule[key])
+            logging.info(f"Removed outdated recording schedule: {key}")
+            del current_schedule[key]
+
+    current_schedule = new_schedule_keys
+    logging.info("Schedule updated.")
 
 # Initial schedule load
 update_schedule()
 
-# Reload the schedule every 5 minutes
+def printJobs():
+    logging.info(schedule.get_jobs())
+# Reload the schedule every 10 seconds
 schedule.every(10).seconds.do(update_schedule)
+schedule.every(10).seconds.do(printJobs)
 
 logging.info("Scheduler running... Press Ctrl+C to stop.")
 while True:
